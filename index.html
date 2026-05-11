@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Taskboard — To-Do Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F7F6F2;
+      --surface: #FFFFFF;
+      --surface-hover: #F0EFE9;
+      --border: #E2E0D8;
+      --border-strong: #C8C5BA;
+      --text-primary: #1A1917;
+      --text-secondary: #6B6860;
+      --text-muted: #A09D94;
+      --accent: #2D5A3D;
+      --accent-hover: #234A31;
+      --danger: #8B2020;
+      --danger-light: #FAEAEA;
+      --open-bg: #EAF2EE;
+      --open-text: #1E4D30;
+      --open-border: #A8CFBA;
+      --closed-bg: #F0EFEA;
+      --closed-text: #5A5850;
+      --closed-border: #C8C5BA;
+      --overdue-bg: #FAEAEA;
+      --overdue-text: #7A1F1F;
+      --overdue-border: #E8AAAA;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    }
+
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text-primary); min-height: 100vh; line-height: 1.5; }
+
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 2rem; display: flex; align-items: center; justify-content: space-between;
+      height: 64px; position: sticky; top: 0; z-index: 100;
+    }
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+    .logo-mark { font-family: 'DM Serif Display', serif; font-size: 22px; letter-spacing: -0.5px; }
+    .logo-mark span { color: var(--accent); }
+    .logo-sub { font-size: 12px; color: var(--text-muted); font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; }
+
+    .header-right { display: flex; align-items: center; gap: 1.5rem; }
+    .header-stats { display: flex; gap: 1.5rem; align-items: center; }
+    .stat-pill { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 5px; }
+    .stat-pill strong { font-weight: 600; color: var(--text-primary); }
+
+    .sync-indicator { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+    .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; }
+    .sync-dot.syncing { background: #C88A00; animation: pulse 1s infinite; }
+    .sync-dot.synced  { background: var(--accent); }
+    .sync-dot.error   { background: var(--danger); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .btn-auth {
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+      display: flex; align-items: center; gap: 7px; padding: 7px 14px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: var(--surface); color: var(--text-primary); cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .btn-auth:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+
+    /* Setup banner */
+    .setup-banner {
+      background: #FFFBEC; border: 1px solid #F0D080; border-radius: var(--radius);
+      padding: 1.25rem 1.5rem; margin-bottom: 2rem; display: none;
+    }
+    .setup-banner.visible { display: block; }
+    .setup-banner h3 { font-size: 14px; font-weight: 600; color: #7A5200; margin-bottom: 6px; }
+    .setup-banner p  { font-size: 13px; color: #5A3C00; line-height: 1.7; }
+    .setup-banner code { font-family: monospace; font-size: 12px; background: rgba(0,0,0,0.07); padding: 1px 5px; border-radius: 3px; }
+    .setup-banner a { color: var(--accent); }
+    .setup-banner ol { padding-left: 1.25rem; margin-top: 6px; }
+    .setup-banner li { margin-bottom: 3px; }
+
+    /* Auth screen */
+    #auth-screen { display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; gap: 1rem; padding: 2rem; }
+    #auth-screen.visible { display: flex; }
+    #auth-screen svg { opacity: 0.2; margin-bottom: 0.5rem; }
+    #auth-screen h2 { font-family: 'DM Serif Display', serif; font-size: 28px; }
+    #auth-screen p  { font-size: 15px; color: var(--text-secondary); max-width: 360px; line-height: 1.6; }
+
+    .btn-google {
+      font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+      display: flex; align-items: center; gap: 10px; padding: 11px 22px;
+      background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm); cursor: pointer;
+      transition: box-shadow 0.15s, background 0.12s; margin-top: 0.5rem; color: var(--text-primary);
+    }
+    .btn-google:hover { background: var(--surface-hover); box-shadow: var(--shadow-md); }
+
+    main { max-width: 900px; margin: 0 auto; padding: 2.5rem 2rem; }
+
+    .page-intro { margin-bottom: 2rem; }
+    .page-intro h1 { font-family: 'DM Serif Display', serif; font-size: 32px; line-height: 1.2; letter-spacing: -0.5px; margin-bottom: 4px; }
+    .page-intro p  { color: var(--text-secondary); font-size: 15px; }
+
+    .add-task-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 2rem; box-shadow: var(--shadow); }
+    .add-task-card h2 { font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 1rem; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+
+    input[type="text"], input[type="date"], textarea {
+      font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--text-primary);
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 9px 12px; transition: border-color 0.15s, box-shadow 0.15s; outline: none;
+    }
+    input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(45,90,61,0.1); background: var(--surface); }
+    textarea { resize: vertical; min-height: 72px; }
+
+    .form-footer { margin-top: 14px; display: flex; justify-content: flex-end; }
+
+    .btn-primary {
+      font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+      background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
+      padding: 10px 20px; cursor: pointer; transition: background 0.15s, transform 0.1s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: 12px; flex-wrap: wrap; }
+    .filter-tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; gap: 2px; }
+    .tab { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: var(--text-secondary); background: transparent; border: none; border-radius: 5px; padding: 6px 14px; cursor: pointer; transition: background 0.12s, color 0.12s; white-space: nowrap; }
+    .tab:hover { background: var(--surface-hover); color: var(--text-primary); }
+    .tab.active { background: var(--accent); color: #fff; }
+    .sort-select { font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 12px; cursor: pointer; outline: none; }
+
+    .task-list { display: flex; flex-direction: column; gap: 10px; }
+    .task-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; box-shadow: var(--shadow); display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: start; transition: box-shadow 0.15s; animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    .task-card:hover { box-shadow: var(--shadow-md); }
+    .task-card.closed { opacity: 0.72; }
+    .task-card.closed .task-title { text-decoration: line-through; color: var(--text-muted); }
+
+    .task-body { min-width: 0; }
+    .task-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .task-title { font-size: 15px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 10px; }
+    .task-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 20px; border: 1px solid transparent; }
+    .badge-open    { background: var(--open-bg);    color: var(--open-text);    border-color: var(--open-border); }
+    .badge-closed  { background: var(--closed-bg);  color: var(--closed-text);  border-color: var(--closed-border); }
+    .badge-overdue { background: var(--overdue-bg); color: var(--overdue-text); border-color: var(--overdue-border); }
+
+    .due-date { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+    .due-date.overdue { color: var(--danger); font-weight: 500; }
+
+    .task-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .btn-icon { font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer; color: var(--text-secondary); transition: all 0.12s; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+    .btn-icon:hover { background: var(--surface-hover); color: var(--text-primary); border-color: var(--border-strong); }
+    .btn-close  { color: var(--open-text); border-color: var(--open-border); background: var(--open-bg); }
+    .btn-close:hover  { background: #d4e8dc; border-color: var(--accent); color: var(--accent); }
+    .btn-reopen:hover { background: var(--open-bg); color: var(--open-text); border-color: var(--open-border); }
+    .btn-delete:hover { background: var(--danger-light); color: var(--danger); border-color: #e8aaaa; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+    .empty-state svg { width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.35; }
+    .empty-state p { font-size: 15px; }
+    .empty-state small { font-size: 13px; }
+
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(26,25,23,0.4); z-index: 500; align-items: center; justify-content: center; padding: 1rem; backdrop-filter: blur(2px); }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 1.75rem; width: 100%; max-width: 480px; box-shadow: var(--shadow-md); animation: modalIn 0.18s ease; }
+    @keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+    .modal-header h3 { font-family: 'DM Serif Display', serif; font-size: 20px; }
+    .btn-close-modal { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 20px; padding: 2px 6px; border-radius: 4px; transition: background 0.1s; }
+    .btn-close-modal:hover { background: var(--surface-hover); }
+    .modal-footer { margin-top: 1.25rem; display: flex; justify-content: flex-end; gap: 8px; }
+    .btn-secondary { font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; background: transparent; color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 18px; cursor: pointer; transition: background 0.12s; }
+    .btn-secondary:hover { background: var(--surface-hover); }
+
+    @media (max-width: 600px) {
+      main { padding: 1.5rem 1rem; }
+      header { padding: 0 1rem; }
+      .header-stats { display: none; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-group.full { grid-column: 1; }
+      .task-card { grid-template-columns: 1fr; }
+      .task-actions { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-mark">Task<span>board</span></span>
+    <span class="logo-sub">Personal</span>
+  </div>
+  <div class="header-right">
+    <div class="header-stats">
+      <div class="stat-pill"><strong id="stat-open">0</strong> open</div>
+      <div class="stat-pill"><strong id="stat-overdue">0</strong> overdue</div>
+      <div class="stat-pill"><strong id="stat-closed">0</strong> closed</div>
+    </div>
+    <div class="sync-indicator" id="sync-indicator" style="display:none">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-label">Synced</span>
+    </div>
+    <button class="btn-auth" id="auth-btn" onclick="handleAuthClick()" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908C16.658 14.38 17.64 11.92 17.64 9.2z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+        <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      <span id="auth-btn-label">Sign in</span>
+    </button>
+  </div>
+</header>
+
+<div style="max-width:900px;margin:0 auto;padding:1.5rem 2rem 0">
+  <div class="setup-banner" id="setup-banner">
+    <h3>⚙️ One-time setup — add your Google OAuth Client ID</h3>
+    <p>Open <code>index.html</code> and replace <code>YOUR_GOOGLE_CLIENT_ID</code> near the top of the <code>&lt;script&gt;</code> with your real Client ID. Here's how to get one:</p>
+    <ol>
+      <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com/apis/credentials</a></li>
+      <li>Click <strong>Create Credentials → OAuth client ID → Web application</strong></li>
+      <li>Add your deployed URL (and <code>http://localhost</code> for local testing) to <em>Authorised JavaScript origins</em></li>
+      <li>Enable the <strong>Google Drive API</strong> in <em>APIs &amp; Services → Library</em></li>
+    </ol>
+    <p style="margin-top:8px">The app only ever reads and writes the single file it creates in your Drive (<code>taskboard_data.json</code>). It cannot access any other Drive content.</p>
+  </div>
+</div>
+
+<div id="auth-screen">
+  <svg width="60" height="60" viewBox="0 0 56 56" fill="none"><rect x="6" y="8" width="44" height="42" rx="5" stroke="currentColor" stroke-width="2.5"/><path d="M6 20h44M20 8v12M36 8v12M14 32h12M14 40h20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+  <h2>Sign in to Taskboard</h2>
+  <p>Your tasks are stored in your own Google Drive and sync across all your devices automatically.</p>
+  <button class="btn-google" onclick="signIn()">
+    <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908C16.658 14.38 17.64 11.92 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+    Sign in with Google
+  </button>
+</div>
+
+<main id="app-main" style="display:none">
+  <div class="page-intro">
+    <h1>Your tasks</h1>
+    <p>Stored in Google Drive — synced across all your devices.</p>
+  </div>
+
+  <div class="add-task-card">
+    <h2>New task</h2>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="input-title">Title</label>
+        <input type="text" id="input-title" placeholder="Short task title…" maxlength="80" />
+      </div>
+      <div class="form-group">
+        <label for="input-due">Due date</label>
+        <input type="date" id="input-due" />
+      </div>
+      <div class="form-group full">
+        <label for="input-desc">Description</label>
+        <textarea id="input-desc" placeholder="What needs to be done?"></textarea>
+      </div>
+    </div>
+    <div class="form-footer">
+      <button class="btn-primary" onclick="addTask()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Add task
+      </button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="filter-tabs">
+      <button class="tab active" onclick="setFilter('all',this)">All</button>
+      <button class="tab" onclick="setFilter('open',this)">Open</button>
+      <button class="tab" onclick="setFilter('overdue',this)">Overdue</button>
+      <button class="tab" onclick="setFilter('closed',this)">Closed</button>
+    </div>
+    <select class="sort-select" id="sort-select" onchange="renderTasks()">
+      <option value="due-asc">Sort: Due date ↑</option>
+      <option value="due-desc">Sort: Due date ↓</option>
+      <option value="created-desc">Sort: Newest first</option>
+      <option value="created-asc">Sort: Oldest first</option>
+    </select>
+  </div>
+
+  <div class="task-list" id="task-list"></div>
+</main>
+
+<div class="modal-backdrop" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit task</h3>
+      <button class="btn-close-modal" onclick="closeModal()">×</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="edit-title">Title</label>
+        <input type="text" id="edit-title" maxlength="80" />
+      </div>
+      <div class="form-group">
+        <label for="edit-due">Due date</label>
+        <input type="date" id="edit-due" />
+      </div>
+      <div class="form-group full">
+        <label for="edit-desc">Description</label>
+        <textarea id="edit-desc" style="min-height:88px"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEdit()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ── CONFIG ── Replace with your Client ID from Google Cloud Console */
+  const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
+
+  const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+  const FILENAME = 'taskboard_data.json';
+
+  let tasks = [], currentFilter = 'all', editingId = null;
+  let accessToken = null, driveFileId = null, saveTimer = null;
+  let tokenClient;
+
+  window.onload = () => {
+    if (CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID') {
+      document.getElementById('setup-banner').classList.add('visible');
+    }
+    waitForGoogle();
+  };
+
+  function waitForGoogle() {
+    if (typeof google === 'undefined') { setTimeout(waitForGoogle, 150); return; }
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID, scope: SCOPES,
+      callback: async (resp) => {
+        if (resp.error) { setSyncState('error', 'Auth failed'); return; }
+        accessToken = resp.access_token;
+        showApp(); await loadFromDrive();
+      },
+    });
+    // Silent sign-in attempt
+    google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID, scope: SCOPES, prompt: '',
+      callback: async (resp) => {
+        if (!resp.error && resp.access_token) {
+          accessToken = resp.access_token;
+          showApp(); await loadFromDrive();
+        } else { showAuthScreen(); }
+      },
+    }).requestAccessToken({ prompt: '' });
+  }
+
+  function signIn() { tokenClient.requestAccessToken({ prompt: 'consent' }); }
+
+  function handleAuthClick() {
+    if (accessToken) {
+      if (!confirm('Sign out of Taskboard?')) return;
+      google.accounts.oauth2.revoke(accessToken);
+      accessToken = null; driveFileId = null; tasks = [];
+      showAuthScreen();
+    } else { signIn(); }
+  }
+
+  function showApp() {
+    document.getElementById('auth-screen').classList.remove('visible');
+    document.getElementById('app-main').style.display = 'block';
+    document.getElementById('auth-btn').style.display = 'flex';
+    document.getElementById('auth-btn-label').textContent = 'Sign out';
+    document.getElementById('sync-indicator').style.display = 'flex';
+  }
+
+  function showAuthScreen() {
+    document.getElementById('auth-screen').classList.add('visible');
+    document.getElementById('app-main').style.display = 'none';
+    document.getElementById('auth-btn').style.display = 'flex';
+    document.getElementById('auth-btn-label').textContent = 'Sign in';
+    document.getElementById('sync-indicator').style.display = 'none';
+  }
+
+  function setSyncState(state, label) {
+    document.getElementById('sync-dot').className = 'sync-dot ' + state;
+    document.getElementById('sync-label').textContent = label;
+  }
+
+  /* ── Google Drive API ── */
+  async function req(url, method, body, ct) {
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${accessToken}`, ...(ct ? { 'Content-Type': ct } : {}) },
+      body,
+    });
+    if (!res.ok) throw new Error(`Drive ${res.status}`);
+    return res;
+  }
+
+  async function findOrCreate() {
+    const r = await req(`https://www.googleapis.com/drive/v3/files?q=name='${FILENAME}'+and+trashed=false&spaces=drive&fields=files(id)`, 'GET');
+    const d = await r.json();
+    if (d.files && d.files.length) { driveFileId = d.files[0].id; return; }
+    const boundary = 'tb_bound';
+    const meta = JSON.stringify({ name: FILENAME, mimeType: 'application/json' });
+    const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n[]\r\n--${boundary}--`;
+    const cr = await req('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', 'POST', body, `multipart/related; boundary=${boundary}`);
+    driveFileId = (await cr.json()).id;
+  }
+
+  async function loadFromDrive() {
+    setSyncState('syncing', 'Loading…');
+    try {
+      await findOrCreate();
+      const r = await req(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, 'GET');
+      tasks = await r.json();
+      if (!Array.isArray(tasks)) tasks = [];
+      renderTasks(); setSyncState('synced', 'Synced');
+    } catch(e) { console.error(e); setSyncState('error', 'Load failed'); }
+  }
+
+  async function saveToDrive() {
+    if (!accessToken || !driveFileId) return;
+    setSyncState('syncing', 'Saving…');
+    try {
+      await req(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, 'PATCH', JSON.stringify(tasks), 'application/json');
+      setSyncState('synced', 'Synced');
+    } catch(e) { console.error(e); setSyncState('error', 'Save failed'); }
+  }
+
+  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveToDrive, 800); }
+
+  /* ── Helpers ── */
+  function isOverdue(t) {
+    if (!t.due || t.status === 'closed') return false;
+    const today = new Date(); today.setHours(0,0,0,0);
+    return new Date(t.due + 'T00:00:00') < today;
+  }
+  function fmt(d) { return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function calSvg() { return `<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1" y="2" width="12" height="11" rx="2"/><path d="M1 6h12M4 1v2M10 1v2"/></svg>`; }
+
+  /* ── Render ── */
+  function updateStats() {
+    document.getElementById('stat-open').textContent    = tasks.filter(t => t.status==='open' && !isOverdue(t)).length;
+    document.getElementById('stat-overdue').textContent = tasks.filter(isOverdue).length;
+    document.getElementById('stat-closed').textContent  = tasks.filter(t => t.status==='closed').length;
+  }
+
+  function getSorted() {
+    let list = tasks.filter(t => {
+      if (currentFilter==='open')    return t.status==='open' && !isOverdue(t);
+      if (currentFilter==='closed')  return t.status==='closed';
+      if (currentFilter==='overdue') return isOverdue(t);
+      return true;
+    });
+    const s = document.getElementById('sort-select').value;
+    list.sort((a,b) => {
+      if (s==='due-asc')     { if(!a.due) return 1; if(!b.due) return -1; return a.due.localeCompare(b.due); }
+      if (s==='due-desc')    { if(!a.due) return 1; if(!b.due) return -1; return b.due.localeCompare(a.due); }
+      if (s==='created-asc') return a.created - b.created;
+      return b.created - a.created;
+    });
+    return list;
+  }
+
+  function renderTasks() {
+    updateStats();
+    const list = getSorted();
+    const el = document.getElementById('task-list');
+    if (!list.length) {
+      const m = { all:['No tasks yet','Add your first task above.'], open:['No open tasks','All caught up!'], overdue:['No overdue tasks','Great work!'], closed:['No closed tasks','Complete a task to see it here.'] };
+      const [t,s] = m[currentFilter]||m.all;
+      el.innerHTML = `<div class="empty-state"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="8" y="6" width="32" height="38" rx="4"/><path d="M16 16h16M16 24h16M16 32h8"/></svg><p>${t}</p><small>${s}</small></div>`;
+      return;
+    }
+    el.innerHTML = list.map(t => {
+      const ov = isOverdue(t), cl = t.status==='closed';
+      const bc = cl ? 'badge-closed' : ov ? 'badge-overdue' : 'badge-open';
+      const bl = cl ? 'Closed' : ov ? 'Overdue' : 'Open';
+      const dc = ov ? 'due-date overdue' : 'due-date';
+      const acts = cl
+        ? `<button class="btn-icon btn-reopen" onclick="reopenTask('${t.id}')">↩ Reopen</button><button class="btn-icon btn-delete" onclick="deleteTask('${t.id}')">Delete</button>`
+        : `<button class="btn-icon btn-close" onclick="closeTask('${t.id}')">✓ Mark done</button><button class="btn-icon" onclick="openEdit('${t.id}')">Edit</button><button class="btn-icon btn-delete" onclick="deleteTask('${t.id}')">Delete</button>`;
+      return `<div class="task-card ${cl?'closed':''}" data-id="${t.id}">
+        <div class="task-body">
+          <div class="task-header"><span class="task-title">${esc(t.title)}</span></div>
+          ${t.description ? `<p class="task-desc">${esc(t.description)}</p>` : ''}
+          <div class="task-meta">
+            <span class="badge ${bc}">${bl}</span>
+            <span class="${dc}">${calSvg()} ${t.due ? fmt(t.due) : 'No due date'}</span>
+          </div>
+        </div>
+        <div class="task-actions">${acts}</div>
+      </div>`;
+    }).join('');
+  }
+
+  /* ── Actions ── */
+  function addTask() {
+    const title = document.getElementById('input-title').value.trim();
+    const desc  = document.getElementById('input-desc').value.trim();
+    const due   = document.getElementById('input-due').value;
+    if (!title) {
+      const el = document.getElementById('input-title');
+      el.focus(); el.style.borderColor = 'var(--danger)';
+      setTimeout(() => el.style.borderColor = '', 1500); return;
+    }
+    tasks.unshift({ id: crypto.randomUUID(), title, description: desc, due, status: 'open', created: Date.now() });
+    document.getElementById('input-title').value = '';
+    document.getElementById('input-desc').value  = '';
+    document.getElementById('input-due').value   = '';
+    renderTasks(); scheduleSave();
+  }
+
+  function closeTask(id)  { const t=tasks.find(t=>t.id===id); if(t){t.status='closed'; renderTasks(); scheduleSave();} }
+  function reopenTask(id) { const t=tasks.find(t=>t.id===id); if(t){t.status='open';   renderTasks(); scheduleSave();} }
+
+  function deleteTask(id) {
+    if (!confirm('Delete this task?')) return;
+    tasks = tasks.filter(t => t.id !== id);
+    renderTasks(); scheduleSave();
+  }
+
+  function openEdit(id) {
+    const t = tasks.find(t=>t.id===id); if(!t) return;
+    editingId = id;
+    document.getElementById('edit-title').value = t.title;
+    document.getElementById('edit-desc').value  = t.description || '';
+    document.getElementById('edit-due').value   = t.due || '';
+    document.getElementById('edit-modal').classList.add('open');
+  }
+
+  function closeModal() { document.getElementById('edit-modal').classList.remove('open'); editingId = null; }
+
+  function saveEdit() {
+    const t = tasks.find(t=>t.id===editingId); if(!t) return;
+    const title = document.getElementById('edit-title').value.trim();
+    if (!title) { document.getElementById('edit-title').focus(); return; }
+    t.title = title;
+    t.description = document.getElementById('edit-desc').value.trim();
+    t.due = document.getElementById('edit-due').value;
+    closeModal(); renderTasks(); scheduleSave();
+  }
+
+  function setFilter(f, btn) {
+    currentFilter = f;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    renderTasks();
+  }
+
+  document.getElementById('edit-modal').addEventListener('click', e => { if (e.target===document.getElementById('edit-modal')) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
+  document.getElementById('input-title').addEventListener('keydown', e => { if (e.key==='Enter') addTask(); });
+</script>
+</body>
+</html>
